@@ -26,6 +26,7 @@ func NewS3Client(ctx context.Context, region string) (*s3.Client, error) {
 }
 
 func main() {
+	fmt.Println(os.Args)
 	app := &cli.App{
 		Flags: []cli.Flag{
 			&cli.StringFlag{

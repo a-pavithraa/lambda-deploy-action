@@ -32,17 +32,22 @@ func main() {
 			&cli.StringFlag{
 				Name:    "region",
 				Usage:   "AWS Region",
-				EnvVars: []string{"REGION", "AWS_REGION"},
+				EnvVars: []string{"REGION", "AWS_REGION", "INPUT_AWS_REGION"},
 			},
 			&cli.StringFlag{
 				Name:    "s3-bucket",
-				Usage:   "password for the mysql database",
-				EnvVars: []string{"S3_BUCKET"},
+				Usage:   "S3 bucket name containing the binary",
+				EnvVars: []string{"S3_BUCKET", "INPUT_S3_BUCKET"},
+			},
+			&cli.StringFlag{
+				Name:    "s3-key",
+				Usage:   "S3 Key",
+				EnvVars: []string{"S3_KEY", "INPUT_S3_KEY"},
 			},
 			&cli.StringFlag{
 				Name:    "function-name",
 				Usage:   "lambda function name",
-				EnvVars: []string{"FUNCTION_NAME"},
+				EnvVars: []string{"FUNCTION_NAME", "INPUT_FUNCTION_NAME"},
 			},
 		},
 		Action: func(cCtx *cli.Context) error {

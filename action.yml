@@ -1,5 +1,17 @@
 name: 'Lambda Deployment'
 description: 'Deploy to Lambda'
+inputs:
+  aws_region:
+    description: 'AWS Region'
+    default: 'us-east-1'
+  function_name:
+    description: 'Name of the function'
+  s3_bucket:
+    description: 'S3 Bucket name'
+  s3_key:
+    description: 'S3 Key name'
+  zip_file:
+    description: 'AWS lambda zip file'
 runs:
   using: 'docker'
   image: 'Dockerfile'

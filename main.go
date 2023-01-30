@@ -34,18 +34,18 @@ func main() {
 				EnvVars: []string{"REGION", "AWS_REGION"},
 			},
 			&cli.StringFlag{
-				Name:    "s3_bucket",
+				Name:    "s3-bucket",
 				Usage:   "password for the mysql database",
 				EnvVars: []string{"S3_BUCKET"},
 			},
 			&cli.StringFlag{
-				Name:    "function_name",
+				Name:    "function-name",
 				Usage:   "lambda function name",
 				EnvVars: []string{"FUNCTION_NAME"},
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
-			fmt.Println(cCtx.String("region"), " function_name=", cCtx.String("function_name"))
+			fmt.Println(cCtx.String("region"), " function_name=", cCtx.String("function-name"))
 			return nil
 		},
 	}

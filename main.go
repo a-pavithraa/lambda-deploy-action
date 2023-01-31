@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -10,6 +11,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/urfave/cli/v2"
 )
+
+type LambdaDeployParams struct {
+	FunctionName string
+	BucketName   string
+	KeyName      string
+	Region       string
+	ZipFile      string
+}
 
 func NewS3Client(ctx context.Context, region string) (*s3.Client, error) {
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
@@ -25,8 +34,27 @@ func NewS3Client(ctx context.Context, region string) (*s3.Client, error) {
 	return s3Client, nil
 }
 
+func uploadFileToS3(ctx context.Context, s3Client *s3.Client, lambdaParams LambdaDeployParams) error {
+	zipFile, err := os.Open(lambdaParams.ZipFile)
+	if err != nil {
+		return err
+	}
+	defer zipFile.Close()
+	zipFileInfo, _ := zipFile.Stat()
+	fileSize := zipFileInfo.Size()
+	fileBuffer := make([]byte, fileSize)
+	zipFile.Read(fileBuffer)
+	s3Client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: &lambdaParams.BucketName,
+		Key:    &lambdaParams.KeyName,
+		Body:   bytes.NewReader(fileBuffer),
+	})
+	return nil
+}
+
 func main() {
 	fmt.Println(os.Args)
+	s3Client, err := NewS3Client(context.Background(), "us-east-1")
 	app := &cli.App{
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -35,23 +63,35 @@ func main() {
 				EnvVars: []string{"REGION", "AWS_REGION", "INPUT_AWS_REGION"},
 			},
 			&cli.StringFlag{
-				Name:    "s3-bucket",
+				Name:    "s3Bucket",
 				Usage:   "S3 bucket name containing the binary",
 				EnvVars: []string{"S3_BUCKET", "INPUT_S3_BUCKET"},
 			},
 			&cli.StringFlag{
-				Name:    "s3-key",
+				Name:    "s3Key",
 				Usage:   "S3 Key",
 				EnvVars: []string{"S3_KEY", "INPUT_S3_KEY"},
 			},
 			&cli.StringFlag{
-				Name:    "function-name",
+				Name:    "functionName",
 				Usage:   "lambda function name",
 				EnvVars: []string{"FUNCTION_NAME", "INPUT_FUNCTION_NAME"},
 			},
+			&cli.StringFlag{
+				Name:    "zipFile",
+				Usage:   "Binary to be uploaded",
+				EnvVars: []string{"ZIP_FILE", "INPUT_ZIP_FILE"},
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
-			fmt.Println(cCtx.String("region"), " function_name=", cCtx.String("function-name"))
+			lambdaParams := LambdaDeployParams{
+				Region:       cCtx.String("region"),
+				FunctionName: cCtx.String("functionName"),
+				BucketName:   cCtx.String("s3Bucket"),
+				KeyName:      cCtx.String("s3Key"),
+				ZipFile:      cCtx.String("zipFile"),
+			}
+			uploadFileToS3(context.Background(), s3Client, lambdaParams)
 			return nil
 		},
 	}
@@ -59,16 +99,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	s3Client, err := NewS3Client(context.Background(), "us-east-1")
 	if err != nil {
 		log.Fatal(err)
-	}
-	response, err := s3Client.ListBuckets(context.Background(), &s3.ListBucketsInput{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, bucket := range response.Buckets {
-		fmt.Printf("bucket: %v\n", *bucket.Name)
 	}
 
 }

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -99,12 +98,15 @@ func main() {
 				ZipFile:      cCtx.String("zipFile"),
 			}
 			str := cCtx.String("environmentVariables")
+			fmt.Println(str)
+			/**
 			result := make(map[string]string)
 			if err = json.Unmarshal([]byte(str), &result); err != nil {
 				fmt.Println(err)
 				log.Fatal(err)
 			}
 			lambdaParams.EnvironmentVariables = result
+			*/
 			fmt.Println(lambdaParams)
 
 			uploadFileToS3(context.Background(), s3Client, lambdaParams)

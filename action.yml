@@ -11,6 +11,18 @@ inputs:
     description: 'S3 Key name'
   zip_file:
     description: 'AWS lambda zip file'
+  create_function:
+    description: 'Flag for creating a new lambda function'
+    default: 'false'
+  runtime:
+    description: 'Lambda runtime'
+  memory:
+    description: 'Lambda memory'
+  environment_variables:
+    description: 'Environment variables'
+  role_arn:
+    description: 'Role ARN'
+  
 runs:
   using: 'docker'
   image: 'Dockerfile'

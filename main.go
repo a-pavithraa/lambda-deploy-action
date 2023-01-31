@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -13,11 +14,12 @@ import (
 )
 
 type LambdaDeployParams struct {
-	FunctionName string
-	BucketName   string
-	KeyName      string
-	Region       string
-	ZipFile      string
+	FunctionName         string
+	BucketName           string
+	KeyName              string
+	Region               string
+	ZipFile              string
+	EnvironmentVariables map[string]string
 }
 
 func NewS3Client(ctx context.Context, region string) (*s3.Client, error) {
@@ -82,6 +84,11 @@ func main() {
 				Usage:   "Binary to be uploaded",
 				EnvVars: []string{"ZIP_FILE", "INPUT_ZIP_FILE"},
 			},
+			&cli.StringFlag{
+				Name:    "environmentVariables",
+				Usage:   "Environment variables to be used for Lambda",
+				EnvVars: []string{"ENVIRONMENT_VARIABLES", "INPUT_ENVIRONMENT_VARIABLES"},
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			lambdaParams := LambdaDeployParams{
@@ -91,6 +98,15 @@ func main() {
 				KeyName:      cCtx.String("s3Key"),
 				ZipFile:      cCtx.String("zipFile"),
 			}
+			str := cCtx.String("environmentVariables")
+			result := make(map[string]string)
+			if err = json.Unmarshal([]byte(str), &result); err != nil {
+				fmt.Println(err)
+				log.Fatal(err)
+			}
+			lambdaParams.EnvironmentVariables = result
+			fmt.Println(lambdaParams)
+
 			uploadFileToS3(context.Background(), s3Client, lambdaParams)
 			return nil
 		},

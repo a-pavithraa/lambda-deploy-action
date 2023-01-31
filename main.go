@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -97,16 +99,16 @@ func main() {
 				KeyName:      cCtx.String("s3Key"),
 				ZipFile:      cCtx.String("zipFile"),
 			}
-			str := cCtx.String("environmentVariables")
+			str := strings.TrimSpace(cCtx.String("environmentVariables"))
 			fmt.Println(str)
-			/**
+
 			result := make(map[string]string)
 			if err = json.Unmarshal([]byte(str), &result); err != nil {
 				fmt.Println(err)
 				log.Fatal(err)
 			}
 			lambdaParams.EnvironmentVariables = result
-			*/
+
 			fmt.Println(lambdaParams)
 
 			uploadFileToS3(context.Background(), s3Client, lambdaParams)

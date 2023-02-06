@@ -111,16 +111,17 @@ func GetFunctionCodeFromZip(fileName string) ([]byte, error) {
 func FunctionConfigUpdateWithRetry(ctx context.Context, lambdaParams LambdaDeployParams, client lambda.Client) error {
 	// Not able to perform 2 updates in succession immediately . So retrying till it is successful
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	log.Println("Updating Function Configuration----")
+
 	var err error
 	defer cancel()
 	for {
+		time.Sleep(5 * time.Second)
+		log.Println("Updating Function Configuration----")
 		err = UpdateFunctionConfiguration(ctx, lambdaParams, client)
 
 		if err != nil {
 			log.Println("Retrying after 2 seconds---")
 
-			time.Sleep(2 * time.Second)
 		} else {
 			log.Println("Resource Updated successfully")
 			break

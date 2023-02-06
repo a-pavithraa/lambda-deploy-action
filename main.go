@@ -108,7 +108,7 @@ func GetFunctionCodeFromZip(fileName string) ([]byte, error) {
 	return fileBuffer, nil
 
 }
-func FunctionUpdateWithRetry(ctx context.Context, lambdaParams LambdaDeployParams, client lambda.Client) error {
+func FunctionConfigUpdateWithRetry(ctx context.Context, lambdaParams LambdaDeployParams, client lambda.Client) error {
 	// Not able to perform 2 updates in succession immediately . So retrying till it is successful
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	var err error
@@ -211,9 +211,16 @@ func main() {
 				}
 				lambdaParams.EnvironmentVariables = result
 			}
+			if TrimAndCheckEmptyString(&lambdaParams.FunctionName) {
+				return errors.New("Function Name cannot be empty")
 
-			UpdateFunctionCode(context.Background(), lambdaParams, *lambdaClient)
-			FunctionUpdateWithRetry(context.Background(), lambdaParams, *lambdaClient)
+			}
+
+			if (TrimAndCheckEmptyString(&lambdaParams.BucketName) && TrimAndCheckEmptyString(&lambdaParams.KeyName)) || !TrimAndCheckEmptyString(&lambdaParams.ZipFile) {
+				UpdateFunctionCode(context.Background(), lambdaParams, *lambdaClient)
+			}
+
+			FunctionConfigUpdateWithRetry(context.Background(), lambdaParams, *lambdaClient)
 
 			return nil
 		},

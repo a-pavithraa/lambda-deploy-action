@@ -13,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/lambda/types"
-	"github.com/aws/smithy-go"
 	"github.com/urfave/cli/v2"
 )
 
@@ -120,18 +119,7 @@ func FunctionConfigUpdateWithRetry(ctx context.Context, lambdaParams LambdaDeplo
 
 		if err != nil {
 
-			var apiErr smithy.APIError
-			if errors.As(err, &apiErr) {
-				switch apiErr.(type) {
-				case *types.ResourceConflictException:
-					log.Println("Resource Conflict Exception. Not able to update")
-					time.Sleep(2 * time.Second)
-
-				default:
-					break
-
-				}
-			}
+			time.Sleep(2 * time.Second)
 		} else {
 			log.Println("Resource Updated successfully")
 			break

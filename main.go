@@ -111,6 +111,7 @@ func GetFunctionCodeFromZip(fileName string) ([]byte, error) {
 func FunctionConfigUpdateWithRetry(ctx context.Context, lambdaParams LambdaDeployParams, client lambda.Client) error {
 	// Not able to perform 2 updates in succession immediately . So retrying till it is successful
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	fmt.Println("Inside FunctionConfigUpdateWithRetry----")
 	var err error
 	defer cancel()
 	for {
@@ -118,11 +119,12 @@ func FunctionConfigUpdateWithRetry(ctx context.Context, lambdaParams LambdaDeplo
 
 		if err != nil {
 
+			fmt.Println("Inside for loop----")
 			var apiErr smithy.APIError
 			if errors.As(err, &apiErr) {
 				switch apiErr.(type) {
 				case *types.ResourceConflictException:
-					log.Println("Resource Conflict Exception. Not able to update")
+					fmt.Println("Resource Conflict Exception. Not able to update")
 					time.Sleep(2 * time.Second)
 
 				default:

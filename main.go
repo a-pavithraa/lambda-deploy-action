@@ -1,16 +1,19 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/lambda"
+	"github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/smithy-go"
 	"github.com/urfave/cli/v2"
 )
 
@@ -20,44 +23,124 @@ type LambdaDeployParams struct {
 	KeyName              string
 	Region               string
 	ZipFile              string
+	RoleArn              string
+	Memory               int
+	Timeout              int
 	EnvironmentVariables map[string]string
 }
 
-func NewS3Client(ctx context.Context, region string) (*s3.Client, error) {
+func Client(ctx context.Context, region string) (*lambda.Client, error) {
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	if err != nil {
 		return nil, fmt.Errorf("unable to load SDK config, %s", err)
 	}
-
-	s3Client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+	lambdaClient := lambda.NewFromConfig(cfg, func(o *lambda.Options) {
 		o.Region = region
-
 	})
+	return lambdaClient, nil
 
-	return s3Client, nil
+}
+func UpdateFunctionConfiguration(ctx context.Context, lambdaParams LambdaDeployParams, client lambda.Client) error {
+	configInput := &lambda.UpdateFunctionConfigurationInput{
+		FunctionName: &lambdaParams.FunctionName,
+	}
+	memory := int32(lambdaParams.Memory)
+	timeout := int32(lambdaParams.Timeout)
+	if memory > 0 {
+		configInput.MemorySize = &memory
+	}
+	if timeout > 0 {
+		configInput.Timeout = &timeout
+	}
+	if lambdaParams.EnvironmentVariables != nil {
+		configInput.Environment = &types.Environment{
+			Variables: lambdaParams.EnvironmentVariables,
+		}
+	}
+	if !TrimAndCheckEmptyString(&lambdaParams.RoleArn) {
+		configInput.Role = &lambdaParams.RoleArn
+	}
+	_, err := client.UpdateFunctionConfiguration(ctx, configInput)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return err
 }
 
-func uploadFileToS3(ctx context.Context, s3Client *s3.Client, lambdaParams LambdaDeployParams) error {
-	zipFile, err := os.Open(lambdaParams.ZipFile)
+func UpdateFunctionCode(ctx context.Context, lambdaParams LambdaDeployParams, client lambda.Client) error {
+	functionInput := &lambda.UpdateFunctionCodeInput{
+		FunctionName: &lambdaParams.FunctionName,
+	}
+
+	if !TrimAndCheckEmptyString(&lambdaParams.BucketName) && TrimAndCheckEmptyString(&lambdaParams.KeyName) {
+		functionInput.S3Bucket = &lambdaParams.BucketName
+		functionInput.S3Key = &lambdaParams.KeyName
+
+	}
+	if !TrimAndCheckEmptyString(&lambdaParams.ZipFile) {
+
+		contents, err := GetFunctionCodeFromZip(lambdaParams.ZipFile)
+		if err != nil {
+			log.Println(err)
+			return err
+		}
+		functionInput.ZipFile = contents
+	}
+	client.UpdateFunctionCode(ctx, functionInput)
+
+	return nil
+
+}
+
+func GetFunctionCodeFromZip(fileName string) ([]byte, error) {
+
+	zipFile, err := os.Open(fileName)
 	if err != nil {
-		return err
+		fmt.Println(err)
+		return nil, err
 	}
 	defer zipFile.Close()
 	zipFileInfo, _ := zipFile.Stat()
 	fileSize := zipFileInfo.Size()
 	fileBuffer := make([]byte, fileSize)
 	zipFile.Read(fileBuffer)
-	s3Client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket: &lambdaParams.BucketName,
-		Key:    &lambdaParams.KeyName,
-		Body:   bytes.NewReader(fileBuffer),
-	})
-	return nil
+
+	return fileBuffer, nil
+
+}
+func FunctionUpdateWithRetry(ctx context.Context, lambdaParams LambdaDeployParams, client lambda.Client) error {
+	// Not able to perform 2 updates in succession immediately . So retrying till it is successful
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	var err error
+	defer cancel()
+	for {
+		err = UpdateFunctionConfiguration(ctx, lambdaParams, client)
+
+		if err != nil {
+
+			var apiErr smithy.APIError
+			if errors.As(err, &apiErr) {
+				switch apiErr.(type) {
+				case *types.ResourceConflictException:
+					log.Println("Resource Conflict Exception. Not able to update")
+					time.Sleep(2 * time.Second)
+
+				default:
+					break
+
+				}
+			}
+		} else {
+			log.Println("Resource Updated successfully")
+			break
+		}
+	}
+	return err
 }
 
 func main() {
 	fmt.Println(os.Args)
-	s3Client, err := NewS3Client(context.Background(), "us-east-1")
+
 	app := &cli.App{
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -90,6 +173,21 @@ func main() {
 				Usage:   "Environment variables to be used for Lambda",
 				EnvVars: []string{"ENVIRONMENT_VARIABLES", "INPUT_ENVIRONMENT_VARIABLES"},
 			},
+			&cli.StringFlag{
+				Name:    "roleArn",
+				Usage:   "Role to be used for Lambda",
+				EnvVars: []string{"ROLE_ARN", "INPUT_ROLE_ARN"},
+			},
+			&cli.IntFlag{
+				Name:    "memory",
+				Usage:   "Memory limit",
+				EnvVars: []string{"MEMORY", "INPUT_MEMORY"},
+			},
+			&cli.IntFlag{
+				Name:    "timeout",
+				Usage:   "Timeout for Lambda",
+				EnvVars: []string{"TIMEOUT", "INPUT_TIMEOUT"},
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			lambdaParams := LambdaDeployParams{
@@ -98,20 +196,25 @@ func main() {
 				BucketName:   cCtx.String("s3Bucket"),
 				KeyName:      cCtx.String("s3Key"),
 				ZipFile:      cCtx.String("zipFile"),
+				Memory:       cCtx.Int("memory"),
+				Timeout:      cCtx.Int("timeout"),
+				RoleArn:      cCtx.String("roleArn"),
 			}
-			str := strings.TrimSpace(cCtx.String("environmentVariables"))
-			fmt.Println(str)
+			lambdaClient, err := Client(context.Background(), lambdaParams.Region)
+			environmentVariables := cCtx.String("environmentVariables")
+			if TrimAndCheckEmptyString(&environmentVariables) {
 
-			result := make(map[string]string)
-			if err = json.Unmarshal([]byte(str), &result); err != nil {
-				fmt.Println(err)
-				log.Fatal(err)
+				result := make(map[string]string)
+				if err = json.Unmarshal([]byte(environmentVariables), &result); err != nil {
+					fmt.Println(err)
+					log.Fatal(err)
+				}
+				lambdaParams.EnvironmentVariables = result
 			}
-			lambdaParams.EnvironmentVariables = result
 
-			fmt.Println(lambdaParams)
+			UpdateFunctionCode(context.Background(), lambdaParams, *lambdaClient)
+			FunctionUpdateWithRetry(context.Background(), lambdaParams, *lambdaClient)
 
-			uploadFileToS3(context.Background(), s3Client, lambdaParams)
 			return nil
 		},
 	}
@@ -119,8 +222,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if err != nil {
-		log.Fatal(err)
-	}
-
+}
+func TrimAndCheckEmptyString(s *string) bool {
+	*s = strings.TrimSpace(*s)
+	return len(*s) == 0
 }
